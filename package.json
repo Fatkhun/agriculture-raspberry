@@ -1,0 +1,21 @@
+{
+  "name": "raspy-nodejs",
+  "version": "1.0.0",
+  "description": "smart agriculture",
+  "main": "index.js",
+  "scripts": {
+    "test": "hello word"
+  },
+  "author": "Fatkhun",
+  "license": "ISC",
+  "dependencies": {
+    "ajax-request": "^1.2.3",
+    "johnny-five": "^1.0.0",
+    "mcp-adc": "^0.1.0",
+    "mcp-spi-adc": "^2.0.5",
+    "node-dht-sensor": "0.0.34",
+    "node-rest-client": "^3.1.0",
+    "pigpio": "^1.2.2",
+    "rpi-gpio": "^2.1.3"
+  }
+}
