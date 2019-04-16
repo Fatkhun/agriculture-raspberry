@@ -8,18 +8,17 @@ var urlData = "http://192.168.43.36:8080/data/record";
 
 // fuzzy
 var temp = 26;
-var hum  = 37;
-var tes = 0;
+var hum  = 57;
 
 
 // fuzzy temperature
-var tempMin = [0, 10, 25, 30, 35];
-var tempMax = [25, 30, 35, 40, 80];
+var tempMin = [0, 8, 15, 20, 25];
+var tempMax = [10, 17, 22, 27, 80];
 var strTemp = ["Dingin", "Sejuk", "Normal", "Sedang", "Panas"];
 
 // fuzzy humidity
-var humMin = [0, 25, 60];
-var humMax = [40, 75, 100];
+var humMin = [0, 25, 55];
+var humMax = [30, 60, 100];
 var strHum = ["Kering", "Lembab", "Basah"];
 
 // fuzzy rule
@@ -116,8 +115,8 @@ var app = {
             // }
         })
 
-        tes = Math.round((app.calculateFuzzy(temp, hum))*50);
-        console.log(tes);
+        tesFuzzy = Math.round((app.calculateFuzzy(temp, hum))*50);
+        console.log(tesFuzzy);
         // record data all
         Promise.all([sensor1, sensor2]).then(function(){
             app.recordData();
@@ -140,7 +139,7 @@ var app = {
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp >= tempMax [3]){
+        } else if (temp >= tempMax[3]){
             var hasilTemp   = app.searchTemp1(4);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
@@ -175,23 +174,32 @@ var app = {
         //humidity
         console.log("\nHumidity");
         
-        if (hum<=humMin[1]){
-            var hasilHum = app.searchHum1(0);
-            var valHum = hasilHum[0]; var strValHum = hasilHum[1]; var statusHum = hasilHum[2];
-        } else if (hum >= humMax[1]){
-            var hasilHum = app.searchHum1(2);
-            var valHum = hasilHum[0]; var strValHum = hasilHum[1]; var statusHum = hasilHum[2];
-        } else if (hum >= humMax[0] && hum <= humMin[2]){
-            var hasilHum = app.searchHum1(1);
-            var valHum = hasilHum[0]; var strValHum = hasilHum[1]; var statusHum = hasilHum[2];
+        if (hum <= humMin[1]){
+            var hasilHum    = app.searchHum1(0);
+            var strValHum  = hasilHum.strValHum; 
+            var valHum     = hasilHum.valHum; 
+            var statusHum  = hasilHum.statusHum;
+        } else if (hum >= humMax[2]){
+            var hasilHum    = app.searchHum1(2);
+            var strValHum  = hasilHum.strValHum; 
+            var valHum     = hasilHum.valHum; 
+            var statusHum  = hasilHum.statusHum;
+        } else if (hum == humMax[0] || hum == humMin[2]){
+            var hasilHum    = app.searchHum1(1);
+            var strValHum  = hasilHum.strValHum; 
+            var valHum     = hasilHum.valHum; 
+            var statusHum  = hasilHum.statusHum;
         } else {
-            var valHum=[]; var strValHum=[]; var statusHum;
-            var hasilHum = app.searchHum2(hum);
-            strValHum[0] = hasilHum[0]; valHum[0] = hasilHum[1]; strValHum[1]=hasilHum[2]; valHum[1]=hasilHum[3]; statusHum = hasilHum[4];
+            var valHum      =[]; 
+            var strValHum   =[]; 
+            var statusHum   =0;
+            var hasilHum    = app.searchHum2(hum);
+            strValHum[0]    = hasilHum[0]; 
+            valHum[0]      = hasilHum[1], strValHum[1]=hasilHum[2], valHum[1]=hasilHum[3], statusHum=hasilHum[4];
+
+            console.log(strValHum[0]+' '+strValHum[1]);
+            console.log(valHum[0]+' '+valHum[1]);
         }
-    
-    
-                console.log(valHum+' '+strValHum+' '+statusHum);
         
         //perhitungan
         console.log("\nPerhitungan");
@@ -256,14 +264,16 @@ var app = {
     },
 
     searchTemp1: function(i){
-        var valTemp = 1; var strValTemp = strTemp[i];
+        var valTemp = 1; 
+        var strValTemp = strTemp[i];
         console.log(strValTemp + " : " + valTemp);
         var statusTemp = 1;
         return [valTemp, strValTemp, statusTemp];
     },
     
      searchTemp2: function(temp){
-        var flag1 =0; var flag2=0;
+        var flag1 =0; 
+        var flag2=0;
         for(var i=0; i<=4; i++){
             //mencari temp bawah
             if (temp > tempMin[i] && temp < tempMax[i-1] && flag1 == 0){
@@ -291,14 +301,16 @@ var app = {
     },
     
      searchHum1: function(i){
-        var valHum = 1; var strValHum = strHum[i];
+        var valHum = 1; 
+        var strValHum = strHum[i];
         console.log(strValHum + " : " + valHum);
         var statusHum = 1;
         return [valHum, strValHum, statusHum];
     },
     
      searchHum2: function(hum){
-        var flag1=0; var flag2=0;
+        var flag1=0; 
+        var flag2=0;
         for (var i=0; i<=2; i++){
             //mencari hum bawah
             if (hum > humMin[i] && hum < humMax[i-1] && flag1 == 0){
@@ -339,7 +351,7 @@ var app = {
             i=3;
         } else if (strTempInp == strTemp[2] && strHumInp == strHum[0]){ // Normal Kering
             i=4;
-        } else if (strTempInp == strTemp[3] && strHumInp == strHum[0]){ // Hangat Kering
+        } else if (strTempInp == strTemp[3] && strHumInp == strHum[0]){ // Sedang Kering
             i=5;
         } else if (strTempInp == strTemp[4] && strHumInp == strHum[0]){ // Panas Kering
             i=6;
@@ -349,7 +361,7 @@ var app = {
             i=2;
         } else if (strTempInp == strTemp[2] && strHumInp == strHum[1]){ // Normal Lembab
             i=3;
-        } else if (strTempInp == strTemp[3] && strHumInp == strHum[1]){ // Hangat Lembab
+        } else if (strTempInp == strTemp[3] && strHumInp == strHum[1]){ // Sedang Lembab
             i=4;
         } else if (strTempInp == strTemp[4] && strHumInp == strHum[1]){ // Panas Lembab
             i=5;
@@ -359,7 +371,7 @@ var app = {
             i=1;
         } else if (strTempInp == strTemp[2] && strHumInp == strHum[2]){ // Normal Basah
             i=2;
-        } else if (strTempInp == strTemp[3] && strHumInp == strHum[2]){ // Hangat Basah
+        } else if (strTempInp == strTemp[3] && strHumInp == strHum[2]){ // Sedang Basah
             i=3;
         } else if (strTempInp == strTemp[4] && strHumInp == strHum[2]){ // Panas Basah
             i=4;
