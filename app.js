@@ -1,9 +1,12 @@
 var sensorLib = require("node-dht-sensor");
 var request = require('ajax-request');
+var config = require('./config/config');
 var gpio = require('rpi-gpio');
 var mcpadc = require("mcp-spi-adc");
 var time = new Date();
 var urlData = "http://192.168.43.36:8080/data/record";
+var urlSetting = "http://192.168.43.36:8080/relay/config/5c7ebb4267722562b4cc4395";
+var urlRelayUpdate = "http://192.168.43.36:8080/relay/update/5c7ebb4267722562b4cc4395";
 
 
 // fuzzy
@@ -12,34 +15,39 @@ var hum  = 57;
 
 
 // fuzzy temperature
-var tempMin = [0, 8, 15, 20, 25];
-var tempMax = [10, 17, 22, 27, 80];
+var tempMin = [0, 20, 25, 30, 35];
+var tempMax = [25, 30, 35, 40, 80];
 var strTemp = ["Dingin", "Sejuk", "Normal", "Sedang", "Panas"];
 
 // fuzzy humidity
-var humMin = [0, 25, 55];
-var humMax = [30, 60, 100];
+var humMin = [0, 25, 60];
+var humMax = [55, 75, 100];
 var strHum = ["Kering", "Lembab", "Basah"];
 
 // fuzzy rule
 var ruleMin = [0, 1, 2.5, 3.75, 5, 7, 8];
 var ruleMax = [2, 3, 5, 6.25, 7.5, 9, 10];
 var rulePeak= [1, 2, 3.75, 5, 6.25, 8, 9];
+var ruleCategory = [200, 300, 500, 600, 700, 900, 1000];
 var strRule = ["SSdkt", "Sdkt", "ASdkt", "Sedang", "ABnyk", "Bnyk", "SBnyk"];
 
 var tesFuzzy = 0;
 
 
 var app = {
+    isPumpOn: "OFF",
+    isAutoPumpOn: "ON",
+    currentTargetSoil: 0,
     currentTemp:0,
     currentHumid:0,
     currentSoil: 0,
     currentWater:0,
     currentTime: time,
+    autoPumpInterval:0,
     sensors: {
         name: "Outdoor",
         type: 22,
-        pin: 4
+        pin: 22
     },
 
     collectData: function(){
@@ -69,7 +77,7 @@ var app = {
                             return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
                     }
 
-                    // var curValue = map(reading.value,0,1,0,100);
+                    var curValue = map(reading.value, 0, 1, 100, 0).toFixed(1);
                     // var zero = 0;
                     // var tmp = curValue;
                     // if(curValue > 98){
@@ -82,41 +90,17 @@ var app = {
                     // }
 
                     // console.log("voltage : " + reading.rawValue / 1023 * 5);
-                    console.log("soil persen : " + map(reading.value, 0, 1, 100, 0).toFixed(1) + "%");
+                    console.log("soil persen : " + curValue + "%");
                     console.log("soil moisture reading : " + (1023 - ((reading.value * 3.3 - 0.5) * 100).toFixed(2)) );
-                    app.currentSoil = reading.value;
+                    app.currentSoil = curValue;
                     resolve();
                 });
             });
-            
-            // gpio.setMode(gpio.MODE_BCM);
-
-            // var pin = 25;
-            // // gpio.setup(7, gpio.DIR_IN, readInput);
-            // gpio.setup(pin, gpio.DIR_OUT, writeOutput);
-
-            // function readInput() {
-            //     gpio.write(7, gpio.DIR_HIGH, function(err, value) {
-            //         console.log('The value is ' + value);
-            //         resolve();
-            //     });
-            // }
-
-            // function writeOutput(err){
-            //     // gpio.write(7, function(err, value) {
-            //     //     console.log('The value is ' + value);
-            //     //     resolve();
-            //     // });
-            //     if (err) throw err;
-            //     gpio.write(pin, true, function(err, value) {
-            //         if (err) throw err;
-            //         console.log('Written to pin' + value);
-            //     });
-            // }
         })
 
-        tesFuzzy = Math.round((app.calculateFuzzy(temp, hum))*50);
-        console.log(tesFuzzy);
+        // tesFuzzy = Math.round((app.calculateFuzzy(Math.round(app.currentTemp), Math.round(app.currentSoil)))*50);
+        // console.log(tesFuzzy);
+
         // record data all
         Promise.all([sensor1, sensor2]).then(function(){
             app.recordData();
@@ -144,17 +128,17 @@ var app = {
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp == 10){
+        } else if (temp == tempMax[0] || temp == tempMin[2]){
             var hasilTemp   = app.searchTemp1(1);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp == 17){
+        } else if (temp == tempMax[1] || temp == tempMin[3]){
             var hasilTemp   = app.searchTemp1(2);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp == 22){
+        } else if (temp == tempMax[2] || temp == tempMin[4]){
             var hasilTemp   = app.searchTemp1(3);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
@@ -184,7 +168,7 @@ var app = {
             var strValHum  = hasilHum.strValHum; 
             var valHum     = hasilHum.valHum; 
             var statusHum  = hasilHum.statusHum;
-        } else if (hum == humMax[0] || hum == humMin[2]){
+        } else if (((hum >= humMax[0] && hum <= humMin[2]) || (hum == humMax[0] || hum == humMin[2]))){
             var hasilHum    = app.searchHum1(1);
             var strValHum  = hasilHum.strValHum; 
             var valHum     = hasilHum.valHum; 
@@ -204,8 +188,12 @@ var app = {
         //perhitungan
         console.log("\nPerhitungan");
         console.log(statusTemp+" "+statusHum);
-        var sumZxA=0; var sumA = 0;
-        var index=[]; var rule=[]; var valRule=[]; var z=[];
+        var sumZxA=0; 
+        var sumA = 0;
+        var index=[]; 
+        var rule=[]; 
+        var valRule=[]; 
+        var z=[];
         // console.log(strValTemp[0]+' '+strValTemp[1]);
         // console.log(valTemp[0]+' '+valTemp[1]);
         if(statusTemp == 1 && statusHum == 1){
@@ -239,7 +227,8 @@ var app = {
                 for(var j=0; j<=1; j++){
                     var hasilSearch = app.searchRule(strValTemp[i], valTemp[i], strValHum[j], valHum[j], 3, count);
                     index[count] = hasilSearch[0]; 
-                    rule[count] = hasilSearch[1]; valRule[count] = hasilSearch[2]; 
+                    rule[count] = hasilSearch[1]; 
+                    valRule[count] = hasilSearch[2]; 
                     z[count] = hasilSearch[3];
     
     
@@ -259,8 +248,6 @@ var app = {
         console.log("Z akhir : " + sumZxA+"/"+sumA);
         console.log("Z akhir : " + zAkhir);
         return zAkhir;
-        temp =0;
-        hum =0;
     },
 
     searchTemp1: function(i){
@@ -341,9 +328,11 @@ var app = {
         var str="";
         var i=0;
         var valRule=0;
-        if (valHum > valTemp)
-                valRule = valTemp;
-        else valRule = valHum;
+        if (valHum > valTemp){
+            valRule = valTemp;
+        }else {
+            valRule = valHum;
+        }
         console.log(strTempInp+' '+strHumInp);
         if (strTempInp == strTemp[0] && strHumInp == strHum[0]){ // Dingin Kering
             i=2;
@@ -377,7 +366,7 @@ var app = {
             i=4;
         }
         
-        var z;
+        var z, y;
         if (type == 1){ 
         z = rulePeak[i];
         } else {
@@ -405,6 +394,9 @@ var app = {
                 humidity: app.currentHumid,
                 soilMoisture: app.currentSoil,
                 waterVolume: app.currentWater,
+                pumpOn: app.isPumpOn,
+                autoPumpOn: app.isAutoPumpOn,
+                targetSoil: app.currentTargetSoil,
                 time: app.currentTime,
             }
         }, function(err, res, data){
@@ -416,14 +408,88 @@ var app = {
     },
     
     initApp: function(){
+        this.initGPIO();
+        this.getSettings();
         this.collectData();
-        // this.searchTemp1();
-        // this.searchTemp2();
-        // this.searchHum1();
-        // this.searchHum2();
-        // this.searchRule();
-        // this.calculateFuzzy();
-    }
+    },
+
+    getSettings:function(){
+        //interval defines how often we check server for new settings
+        setInterval(function(){
+
+            request({
+                url: urlSetting,
+                method: 'GET'
+            }, function(err, res, body) {
+                
+                if(err){
+                    return(err);
+                }
+                var status = JSON.parse(body);
+                //update pump
+                if(status.pumpOn === "ON"){
+                    app.pumpOn();
+                }else{
+                    app.pumpOff();
+                }
+                
+                //if autoPump is on, use target soil moisture to begin cycling water pump every 10 min until target is reached whenever plant gets too dry.
+                if(status.autoPumpOn === "ON"){
+                    app.autoPumpOn();
+                }
+                   
+            });
+        },2000);
+
+    },
+
+    initGPIO: function(){
+        //this is for relay channel (water pump)
+        gpio.setup(37, gpio.DIR_HIGH);
+    },
+
+    //this function auto-waters every 10 minutes if the target moisture level is not being met.
+    autoPumpOn: function(){
+        //check to make sure autoPump isnt already on - so we don't create duplicate interval
+        if(app.currentTargetSoil < app.currentSoil && app.isAutoPumpOn === "OFF"){
+            console.log("turning pump relay auto on");
+            app.isAutoPumpOn = "ON";
+            //turn on pump for 10 seconds
+            // app.pumpOn();
+            
+            //keep running pump every 10 minutes until soil moisture meets target
+            app.autoPumpInterval = setInterval(function(){
+                console.log("turning pump relay auto on ... minutes");
+                app.pumpOn();
+            },10000); 
+        }
+        //if autoPump is already running, and soil reaches appropriate moisture level, turn off watering
+        else if (app.currentTargetSoil >= app.currentSoil && app.isAutoPumpOn === "ON"){
+            //turn off pump interval
+            clearInterval(app.autoPumpInterval)
+            app.isAutoPumpOn = "OFF";
+        }              
+    },
+
+    //close relay circuit for channel pin 37
+    pumpOn: function(){
+        
+        //check to see if pump is already running
+        if(app.isPumpOn === "OFF"){
+            console.log("turning pump relay on");
+            app.isPumpOn = "ON";
+            gpio.write(37, true);
+        }
+    },
+
+    //open relay circuit for channel pin 37
+    pumpOff: function(){
+        if(app.isPumpOn === "ON"){
+            console.log("turning pump relay off");
+            app.isPumpOn = "OFF";
+            gpio.write(37, false);
+        }
+    },
 }
 
 app.initApp();
