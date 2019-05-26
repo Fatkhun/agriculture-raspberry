@@ -1,5 +1,7 @@
 var sensorLib = require("node-dht-sensor");
 var request = require('ajax-request');
+var io = require('socket.io-client');
+var sc = io.connect('http://192.168.43.36:8080');
 var config = require('./config/config');
 var gpio = require('rpi-gpio');
 var mcpadc = require("mcp-spi-adc");
@@ -7,11 +9,11 @@ var time = new Date();
 var urlData = "http://192.168.43.36:8080/data/record";
 var urlSetting = "http://192.168.43.36:8080/relay/config/5c7ebb4267722562b4cc4395";
 var urlRelayUpdate = "http://192.168.43.36:8080/relay/update/5c7ebb4267722562b4cc4395";
+var urlNotif = "http://192.168.43.36:8080/users/notif"
 
 
 // fuzzy
-var temp = 26;
-var hum  = 57;
+var fuzzyValue = 0;
 
 
 // fuzzy temperature
@@ -31,19 +33,19 @@ var rulePeak= [1, 2, 3.75, 5, 6.25, 8, 9];
 var ruleCategory = [200, 300, 500, 600, 700, 900, 1000];
 var strRule = ["SSdkt", "Sdkt", "ASdkt", "Sedang", "ABnyk", "Bnyk", "SBnyk"];
 
-var tesFuzzy = 0;
-
 
 var app = {
     isPumpOn: "OFF",
     isAutoPumpOn: "ON",
-    currentTargetSoil: 0,
+    currentTargetSoil: 50,
     currentTemp:0,
     currentHumid:0,
     currentSoil: 0,
     currentWater:0,
+    currentSetTimeout:0,
     currentTime: time,
     autoPumpInterval:0,
+    autoPumpSetTimeout:0,
     sensors: {
         name: "Outdoor",
         type: 22,
@@ -76,20 +78,7 @@ var app = {
                     function map(x, in_min, in_max, out_min, out_max){ 
                             return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
                     }
-
                     var curValue = map(reading.value, 0, 1, 100, 0).toFixed(1);
-                    // var zero = 0;
-                    // var tmp = curValue;
-                    // if(curValue > 98){
-                    //     curValue = zero;
-                    //     zero = tmp;
-                    //     console.log("curValue : " + curValue)
-                    //     console.log("New 2 : " + zero)
-                    // }else{
-                    //     console.log("NEW else : " + curValue)
-                    // }
-
-                    // console.log("voltage : " + reading.rawValue / 1023 * 5);
                     console.log("soil persen : " + curValue + "%");
                     console.log("soil moisture reading : " + (1023 - ((reading.value * 3.3 - 0.5) * 100).toFixed(2)) );
                     app.currentSoil = curValue;
@@ -98,11 +87,15 @@ var app = {
             });
         })
 
-        // tesFuzzy = Math.round((app.calculateFuzzy(Math.round(app.currentTemp), Math.round(app.currentSoil)))*50);
-        // console.log(tesFuzzy);
+        var fuzzyTes = new Promise(function(resolve, reject){
+            fuzzyValue = Math.round((app.calculateFuzzy(Math.round(app.currentTemp), Math.round(app.currentSoil)))*50);
+            console.log(fuzzyValue);
+            app.currentWater = fuzzyValue ? fuzzyValue : app.currentSetTimeout;
+            resolve();
+        })
 
         // record data all
-        Promise.all([sensor1, sensor2]).then(function(){
+        Promise.all([sensor1, sensor2, fuzzyTes]).then(function(){
             app.recordData();
         })
        }, 2000)
@@ -110,11 +103,8 @@ var app = {
 
     // ai fuzzy
     calculateFuzzy: function(temp, hum){
-        //var temp = document.getElementById("datatemp").value;
-        //var hum = document.getElementById("datahum").value;
         console.log("Temp : "  + temp);
         console.log("Hum : " + hum);
-        // var valTemp; var strValTemp; var statusTemp;
         
         //temperature
         console.log("Temperature");
@@ -128,17 +118,17 @@ var app = {
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp == tempMax[0] || temp == tempMin[2]){
+        } else if (temp == tempMax[0]){
             var hasilTemp   = app.searchTemp1(1);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp == tempMax[1] || temp == tempMin[3]){
+        } else if (temp == tempMax[1]){
             var hasilTemp   = app.searchTemp1(2);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
             var statusTemp  = hasilTemp.statusTemp;
-        } else if (temp == tempMax[2] || temp == tempMin[4]){
+        } else if (temp == tempMax[2]){
             var hasilTemp   = app.searchTemp1(3);
             var strValTemp  = hasilTemp.strValTemp; 
             var valTemp     = hasilTemp.valTemp; 
@@ -366,7 +356,7 @@ var app = {
             i=4;
         }
         
-        var z, y;
+        var z;
         if (type == 1){ 
         z = rulePeak[i];
         } else {
@@ -403,6 +393,7 @@ var app = {
             if(err){
                 return(err)
             }
+            sc.emit('readSensor', data)
             console.log("data posted");
         })
     },
@@ -426,6 +417,7 @@ var app = {
                     return(err);
                 }
                 var status = JSON.parse(body);
+                
                 //update pump
                 if(status.pumpOn === "ON"){
                     app.pumpOn();
@@ -433,11 +425,14 @@ var app = {
                     app.pumpOff();
                 }
                 
-                //if autoPump is on, use target soil moisture to begin cycling water pump every 10 min until target is reached whenever plant gets too dry.
+                //if autoPump is on
                 if(status.autoPumpOn === "ON"){
                     app.autoPumpOn();
                 }
-                   
+                
+                if(status.autoPumpOn === "OFF" && status.pumpOn === "OFF"){
+                    app.waterOff();
+                }
             });
         },2000);
 
@@ -448,26 +443,26 @@ var app = {
         gpio.setup(37, gpio.DIR_HIGH);
     },
 
-    //this function auto-waters every 10 minutes if the target moisture level is not being met.
+    //this function auto-waters if the target moisture level is not being met.
     autoPumpOn: function(){
-        //check to make sure autoPump isnt already on - so we don't create duplicate interval
-        if(app.currentTargetSoil < app.currentSoil && app.isAutoPumpOn === "OFF"){
-            console.log("turning pump relay auto on");
-            app.isAutoPumpOn = "ON";
-            //turn on pump for 10 seconds
+        //check to make sure autoPump isnt already on
+        if(app.currentSoil < app.currentTargetSoil && app.isAutoPumpOn === "ON"){
+            console.log("turning pump relay auto on init");
+            app.isAutoPumpOn = "OFF";
             // app.pumpOn();
-            
-            //keep running pump every 10 minutes until soil moisture meets target
+            app.checkNotif();
+            //keep running pump until soil moisture meets target
             app.autoPumpInterval = setInterval(function(){
-                console.log("turning pump relay auto on ... minutes");
+                console.log("turning pump relay auto on running");
                 app.pumpOn();
-            },10000); 
+            },5000); 
         }
         //if autoPump is already running, and soil reaches appropriate moisture level, turn off watering
-        else if (app.currentTargetSoil >= app.currentSoil && app.isAutoPumpOn === "ON"){
+        else if (app.currentSoil >= app.currentTargetSoil && app.isAutoPumpOn === "OFF"){
             //turn off pump interval
             clearInterval(app.autoPumpInterval)
-            app.isAutoPumpOn = "OFF";
+            app.isAutoPumpOn = "ON";
+            app.waterOff();
         }              
     },
 
@@ -476,9 +471,37 @@ var app = {
         
         //check to see if pump is already running
         if(app.isPumpOn === "OFF"){
-            console.log("turning pump relay on");
+            console.log("turning pump relay on running");
             app.isPumpOn = "ON";
             gpio.write(37, true);
+            // setTimeout(function(){ 
+                // request({       
+                //     method: 'POST',
+                //     url: urlRelayUpdate,
+                //     data: {
+                //         "pumpOn":"OFF",
+                //         "autoPumpOn":"OFF"
+                //         }
+                //     }, function(err, res, body) {
+                //         if(err){
+                //             return(err);
+                //         }
+                //     app.pumpOff();
+                //     //console.log(body);
+                // });
+            // },10000)
+            
+            var af = 0;
+            app.autoPumpSetTimeout = setInterval(function(){
+                if(app.isPumpOn === "ON") {
+                    af = af + 1;
+                    console.log("Timer: " + af);
+                    app.currentSetTimeout = af
+                }else {
+                    app.currentSetTimeout = af
+                    clearInterval(app.autoPumpSetTimeout)
+                }
+            }, 2000);
         }
     },
 
@@ -490,6 +513,26 @@ var app = {
             gpio.write(37, false);
         }
     },
+
+    waterOff: function(){
+        gpio.write(37, false);
+    },
+
+    checkNotif: function(){
+        if(app.currentTargetSoil > app.currentSoil){
+            request({       
+                method: 'GET',
+                url: urlNotif
+            }, function(err, res, body) {
+                if(err){
+                    return(err);
+                }
+                console.log("send notif")
+            });
+        }else if (app.currentTargetSoil <= app.currentSoil){
+            console.log("not send notif")
+        } 
+    }
 }
 
 app.initApp();
