@@ -1,15 +1,16 @@
 var sensorLib = require("node-dht-sensor");
 var request = require('ajax-request');
 var io = require('socket.io-client');
-var sc = io.connect('http://192.168.43.36:8080');
+var ipAddress = 'http://168.63.232.214:8080'
+var sc = io.connect(ipAddress);
 var config = require('./config/config');
 var gpio = require('rpi-gpio');
 var mcpadc = require("mcp-spi-adc");
 var time = new Date();
-var urlData = "http://192.168.43.36:8080/data/record";
-var urlSetting = "http://192.168.43.36:8080/relay/config/5c7ebb4267722562b4cc4395";
-var urlRelayUpdate = "http://192.168.43.36:8080/relay/update/5c7ebb4267722562b4cc4395";
-var urlNotif = "http://192.168.43.36:8080/users/notif"
+var urlData = ipAddress + '/data/record';
+var urlSetting = ipAddress + '/relay/config/5c7ebb4267722562b4cc4395';
+var urlRelayUpdate = ipAddress + '/relay/update/5c7ebb4267722562b4cc4395';
+var urlNotif = ipAddress + '/users/notif';
 
 
 // fuzzy
@@ -31,12 +32,15 @@ var ruleMin = [0, 1, 2.5, 3.75, 5, 7, 8];
 var ruleMax = [2, 3, 5, 6.25, 7.5, 9, 10];
 var rulePeak= [1, 2, 3.75, 5, 6.25, 8, 9];
 var ruleCategory = [200, 300, 500, 600, 700, 900, 1000];
-var strRule = ["SSdkt", "Sdkt", "ASdkt", "Sedang", "ABnyk", "Bnyk", "SBnyk"];
+var strRule = ["Sangat Sedikit", "Sedikit", "Agak Sedikit", "Sedang", "Agak Banyak", "Banyak", "Sangat Banyak"];
 
 
 var app = {
     isPumpOn: "OFF",
     isAutoPumpOn: "ON",
+    isRuleFuzzyTemp: "__",
+    isRuleFuzzyHum: "__",
+    isRuleFuzzyWater: "__",
     currentTargetSoil: 50,
     currentTemp:0,
     currentHumid:0,
@@ -98,7 +102,7 @@ var app = {
         Promise.all([sensor1, sensor2, fuzzyTes]).then(function(){
             app.recordData();
         })
-       }, 2000)
+       },2000)
     },
 
     // ai fuzzy
@@ -141,8 +145,8 @@ var app = {
             strValTemp[0]   = hasilTemp[0]; 
             valTemp[0]      = hasilTemp[1], strValTemp[1]=hasilTemp[2], valTemp[1]=hasilTemp[3], statusTemp=hasilTemp[4];
     
-        console.log(strValTemp[0]+' '+strValTemp[1]);
-        console.log(valTemp[0]+' '+valTemp[1]);
+        // console.log(strValTemp[0]+' '+strValTemp[1]);
+        // console.log(valTemp[0]+' '+valTemp[1]);
         }
         
         //humidity
@@ -171,8 +175,8 @@ var app = {
             strValHum[0]    = hasilHum[0]; 
             valHum[0]      = hasilHum[1], strValHum[1]=hasilHum[2], valHum[1]=hasilHum[3], statusHum=hasilHum[4];
 
-            console.log(strValHum[0]+' '+strValHum[1]);
-            console.log(valHum[0]+' '+valHum[1]);
+            // console.log(strValHum[0]+' '+strValHum[1]);
+            // console.log(valHum[0]+' '+valHum[1]);
         }
         
         //perhitungan
@@ -235,16 +239,34 @@ var app = {
         console.log(valRule);
         
         var zAkhir = (sumZxA / sumA).toFixed(2);
+
+        // rule akhir
+        if(zAkhir >= ruleMin[0] && zAkhir <= ruleMax[0] ){
+            app.isRuleFuzzyWater = strRule[0]
+        }else if(zAkhir >= ruleMin[1] && zAkhir <= ruleMax[1]){
+            app.isRuleFuzzyWater = strRule[1]
+        }else if(zAkhir >= ruleMin[2] && zAkhir <= ruleMax[2]){
+            app.isRuleFuzzyWater = strRule[2]
+        }else if(zAkhir >= ruleMin[3] && zAkhir <= ruleMax[3]){
+            app.isRuleFuzzyWater = strRule[3]
+        }else if(zAkhir >= ruleMin[4] && zAkhir <= ruleMax[4]){
+            app.isRuleFuzzyWater = strRule[4]
+        }else if(zAkhir >= ruleMin[5] && zAkhir <= ruleMax[5]){
+            app.isRuleFuzzyWater = strRule[5]
+        }else if(zAkhir >= ruleMin[6] && zAkhir <= ruleMax[6]){
+            app.isRuleFuzzyWater = strRule[6]
+        }
         console.log("Z akhir : " + sumZxA+"/"+sumA);
-        console.log("Z akhir : " + zAkhir);
+        console.log("Z akhir : " + app.isRuleFuzzyWater + " : "+ zAkhir);
         return zAkhir;
     },
 
     searchTemp1: function(i){
         var valTemp = 1; 
         var strValTemp = strTemp[i];
-        console.log(strValTemp + " : " + valTemp);
         var statusTemp = 1;
+        app.isRuleFuzzyTemp = strValTemp;
+        console.log(strValTemp + " : " + valTemp)
         return [valTemp, strValTemp, statusTemp];
     },
     
@@ -272,6 +294,12 @@ var app = {
         var valTempAtas   = ((Max-temp)/(Max-Min)).toFixed(2);
         var valTempBawah  = ((temp-Min)/(Max-Min)).toFixed(2);
         var statusTemp = 2;
+
+        if(valTempAtas > valTempBawah){
+            app.isRuleFuzzyTemp = strValTempAtas;
+        }else {
+            app.isRuleFuzzyTemp = strValTempBawah;
+        }
         
         console.log(strValTempAtas + " : " + valTempAtas + " " + strValTempBawah + " : " + valTempBawah);
         return [strValTempAtas, valTempAtas, strValTempBawah, valTempBawah, statusTemp];
@@ -280,8 +308,9 @@ var app = {
      searchHum1: function(i){
         var valHum = 1; 
         var strValHum = strHum[i];
-        console.log(strValHum + " : " + valHum);
         var statusHum = 1;
+        app.isRuleFuzzyHum = strValHum;
+        console.log(strValHum + " : " + valHum);
         return [valHum, strValHum, statusHum];
     },
     
@@ -309,8 +338,13 @@ var app = {
         var valHumAtas   = ((Max-hum)/(Max-Min)).toFixed(2);
         var valHumBawah  = ((hum-Min)/(Max-Min)).toFixed(2);
         var statusHum = 2;
-        
-        console.log(strValHumAtas + " : " + valHumAtas + " ---- " + strValHumBawah + " : " + valHumBawah);
+
+        if(valHumAtas > valHumBawah){
+            app.isRuleFuzzyHum = strValHumAtas;
+        }else {
+            app.isRuleFuzzyHum = strValHumBawah;
+        }
+        console.log(strValHumAtas + " : " + valHumAtas + " " + strValHumBawah + " : " + valHumBawah);
         return [strValHumBawah, valHumBawah, strValHumAtas, valHumAtas, statusHum];
     },
     
@@ -386,6 +420,9 @@ var app = {
                 waterVolume: app.currentWater,
                 pumpOn: app.isPumpOn,
                 autoPumpOn: app.isAutoPumpOn,
+                ruleFuzzyTemp: app.isRuleFuzzyTemp,
+                ruleFuzzyHum: app.isRuleFuzzyHum,
+                ruleFuzzyWater: app.isRuleFuzzyWater,
                 targetSoil: app.currentTargetSoil,
                 time: app.currentTime,
             }
@@ -393,7 +430,10 @@ var app = {
             if(err){
                 return(err)
             }
-            sc.emit('readSensor', data)
+            // var status = JSON.stringify(data) 
+            var obj = JSON.parse(data)
+            var status = JSON.stringify(obj.sensor)
+            sc.emit('readSensor', status)
             console.log("data posted");
         })
     },
@@ -431,7 +471,10 @@ var app = {
                 }
                 
                 if(status.autoPumpOn === "OFF" && status.pumpOn === "OFF"){
+                    app.isPumpOn = "ON";
                     app.waterOff();
+                }else{
+                    app.isPumpOn = "OFF";
                 }
             });
         },2000);
@@ -501,7 +544,7 @@ var app = {
                     app.currentSetTimeout = af
                     clearInterval(app.autoPumpSetTimeout)
                 }
-            }, 2000);
+            },2000);
         }
     },
 
