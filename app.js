@@ -20,19 +20,24 @@ var fuzzyValue = 0;
 // fuzzy temperature
 var tempMin = [0, 20, 25, 30, 35];
 var tempMax = [25, 30, 35, 40, 80];
-var strTemp = ["Dingin", "Sejuk", "Normal", "Sedang", "Panas"];
+var strTemp = ["Cold", "Rather Cold", "Normal", "Rather Hot", "Hot"];
 
-// fuzzy humidity
+// fuzzy soil mositure
 var humMin = [0, 25, 60];
 var humMax = [55, 75, 100];
-var strHum = ["Kering", "Lembab", "Basah"];
+var strHum = ["Dry", "Moist", "Wet"];
+
+// fuzzy humidity
+var soilMin = [0, 25, 60];
+var soilMax = [55, 75, 100];
+var strSoil = ["Dry", "Moist", "Wet"];
 
 // fuzzy rule
 var ruleMin = [0, 1, 2.5, 3.75, 5, 7, 8];
 var ruleMax = [2, 3, 5, 6.25, 7.5, 9, 10];
 var rulePeak= [1, 2, 3.75, 5, 6.25, 8, 9];
 var ruleCategory = [200, 300, 500, 600, 700, 900, 1000];
-var strRule = ["Sangat Sedikit", "Sedikit", "Agak Sedikit", "Sedang", "Agak Banyak", "Banyak", "Sangat Banyak"];
+var strRule = ["Very Low", "Low", "Rather Low", "Medium", "Rather High", "High", "Very High"];
 
 
 var app = {
@@ -40,6 +45,7 @@ var app = {
     isAutoPumpOn: "ON",
     isRuleFuzzyTemp: "__",
     isRuleFuzzyHum: "__",
+    isRuleFuzzySoil: "__",
     isRuleFuzzyWater: "__",
     currentTargetSoil: 50,
     currentTemp:0,
@@ -92,7 +98,7 @@ var app = {
         })
 
         var fuzzyTes = new Promise(function(resolve, reject){
-            fuzzyValue = Math.round((app.calculateFuzzy(Math.round(app.currentTemp), Math.round(app.currentSoil)))*50);
+            fuzzyValue = Math.round((app.calculateFuzzy(Math.round(app.currentTemp), Math.round(app.currentHumid), Math.round(app.currentSoil)))*50);
             console.log(fuzzyValue);
             app.currentWater = fuzzyValue ? fuzzyValue : app.currentSetTimeout;
             resolve();
@@ -106,9 +112,10 @@ var app = {
     },
 
     // ai fuzzy
-    calculateFuzzy: function(temp, hum){
+    calculateFuzzy: function(temp, hum, soil){
         console.log("Temp : "  + temp);
         console.log("Hum : " + hum);
+        console.log("Soil : " + soil);
         
         //temperature
         console.log("Temperature");
@@ -178,10 +185,40 @@ var app = {
             // console.log(strValHum[0]+' '+strValHum[1]);
             // console.log(valHum[0]+' '+valHum[1]);
         }
+
+        //soilmoisture
+        console.log("\nSoilMoisture");
+        
+        if (soil <= soilMin[1]){
+            var hasilSoil    = app.searchSoil1(0);
+            var strValSoil  = hasilSoil.strValSoil; 
+            var valSoil     = hasilSoil.valSoil; 
+            var statusSoil  = hasilSoil.statusSoil;
+        } else if (soil >= soilMax[2]){
+            var hasilSoil    = app.searchSoil1(2);
+            var strValSoil  = hasilSoil.strValSoil; 
+            var valSoil     = hasilSoil.valSoil; 
+            var statusSoil  = hasilSoil.statusSoil;
+        } else if (((soil >= soilMax[0] && soil <= soilMin[2]) || (soil == soilMax[0] || soil == soilMin[2]))){
+            var hasilSoil    = app.searchSoil1(1);
+            var strValSoil  = hasilSoil.strValSoil; 
+            var valSoil     = hasilSoil.valSoil; 
+            var statusSoil  = hasilSoil.statusSoil;
+        } else {
+            var valSoil      =[]; 
+            var strValSoil   =[]; 
+            var statusSoil   =0;
+            var hasilSoil    = app.searchSoil2(soil);
+            strValSoil[0]    = hasilSoil[0]; 
+            valSoil[0]      = hasilSoil[1], strValSoil[1]=hasilSoil[2], valSoil[1]=hasilSoil[3], statusSoil=hasilSoil[4];
+
+            // console.log(strValHum[0]+' '+strValHum[1]);
+            // console.log(valHum[0]+' '+valHum[1]);
+        }
         
         //perhitungan
         console.log("\nPerhitungan");
-        console.log(statusTemp+" "+statusHum);
+        console.log(statusTemp+" "+statusSoil);
         var sumZxA=0; 
         var sumA = 0;
         var index=[]; 
@@ -190,24 +227,24 @@ var app = {
         var z=[];
         // console.log(strValTemp[0]+' '+strValTemp[1]);
         // console.log(valTemp[0]+' '+valTemp[1]);
-        if(statusTemp == 1 && statusHum == 1){
-            var hasilSearch = app.searchRule(strValTemp, valTemp, strValHum, valHum, 1, 10);
+        if(statusTemp == 1 && statusSoil == 1){
+            var hasilSearch = app.searchRule(strValTemp, valTemp, strValSoil, valSoil, 1, 10);
             index = hasilSearch[0]; rule = hasilSearch[1]; valRule = hasilSearch[2]; z = hasilSearch[3];
             console.log(rule + " : " + valRule + " -> z= " + z);
             sumSZxA = sumZxA + (z*valRule);
             sumA = sumA + (valRule)*1;
             
-        } else if(statusTemp == 1 && statusHum == 2){
+        } else if(statusTemp == 1 && statusSoil == 2){
             for (var i=0; i<=1; i++){
-                var hasilSearch = app.searchRule(strValTemp, valTemp, strValHum[i], valHum[i], 2, i);
+                var hasilSearch = app.searchRule(strValTemp, valTemp, strValSoil[i], valSoil[i], 2, i);
                 index[i] = hasilSearch[0]; rule[i] = hasilSearch[1]; valRule[i] = hasilSearch[2]; z[i] = hasilSearch[3];
                 console.log(rule[i] + " : " + valRule[i] + " -> z= " + z[i]);
                 sumZxA = sumZxA + (z[i]*valRule[i]);
                 sumA = sumA + (valRule[i])*1;
             }
-        } else if(statusTemp == 2 && statusHum == 1){
+        } else if(statusTemp == 2 && statusSoil == 1){
             for (var i=0; i<=1; i++){
-                var hasilSearch = app.searchRule(strValTemp[i], valTemp[i], strValHum, valHum, 2, i);
+                var hasilSearch = app.searchRule(strValTemp[i], valTemp[i], strValSoil, valSoil, 2, i);
                 index[i] = hasilSearch[0]; rule[i] = hasilSearch[1]; valRule[i] = hasilSearch[2]; z[i] = hasilSearch[3];
                 console.log(rule[i] + " : " + valRule[i] + " -> z= " + z[i]);
                 sumZxA = sumZxA + (z[i]*valRule[i]);
@@ -215,11 +252,11 @@ var app = {
                 sumA = sumA + (valRule[i])*1;
             }
             
-        } else if(statusTemp == 2 && statusHum == 2){
+        } else if(statusTemp == 2 && statusSoil == 2){
             var count=0;
             for(var i=0; i<=1; i++){
                 for(var j=0; j<=1; j++){
-                    var hasilSearch = app.searchRule(strValTemp[i], valTemp[i], strValHum[j], valHum[j], 3, count);
+                    var hasilSearch = app.searchRule(strValTemp[i], valTemp[i], strValSoil[j], valSoil[j], 3, count);
                     index[count] = hasilSearch[0]; 
                     rule[count] = hasilSearch[1]; 
                     valRule[count] = hasilSearch[2]; 
@@ -306,7 +343,7 @@ var app = {
     },
     
      searchHum1: function(i){
-        var valHum = 1; 
+        var valHum = 1;
         var strValHum = strHum[i];
         var statusHum = 1;
         app.isRuleFuzzyHum = strValHum;
@@ -346,6 +383,49 @@ var app = {
         }
         console.log(strValHumAtas + " : " + valHumAtas + " " + strValHumBawah + " : " + valHumBawah);
         return [strValHumBawah, valHumBawah, strValHumAtas, valHumAtas, statusHum];
+    },
+
+    searchSoil1: function(i){
+        var valSoil = 1; 
+        var strValSoil = strSoil[i];
+        var statusSoil = 1;
+        app.isRuleFuzzySoil = strValSoil;
+        console.log(strValSoil + " : " + valSoil);
+        return [valSoil, strValSoil, statusSoil];
+    },
+    
+     searchSoil2: function(soil){
+        var flag1 =0; var flag2=0;
+        for(var i=0; i<=4; i++){
+            //mencari temp bawah
+            if (soil > soilMin[i] && soil < soilMax[i-1] && flag1 == 0){
+                var Min = soilMin[i];
+                var strValSoilBawah = strSoil[i];
+                console.log(strValSoilBawah + " = " + Min);
+                flag1=1;
+            }
+            
+            //mencari temp atas
+            if(soil < soilMax[i] && soil > soilMin[i+1] && flag2 == 0){
+                var Max = soilMax[i];
+                var strValSoilAtas = strSoil[i];
+                console.log(strValSoilAtas + " = " + Max);
+                flag2=1;
+            }
+        }
+        
+        var valSoilAtas   = ((Max-soil)/(Max-Min)).toFixed(2);
+        var valSoilBawah  = ((soil-Min)/(Max-Min)).toFixed(2);
+        var statusSoil = 2;
+
+        if(valSoilAtas > valSoilBawah){
+            app.isRuleFuzzySoil = strValSoilAtas;
+        }else {
+            app.isRuleFuzzySoil = strValSoilBawah;
+        }
+        
+        console.log(strValSoilAtas + " : " + valSoilAtas + " " + strValSoilBawah + " : " + valSoilBawah);
+        return [strValSoilAtas, valSoilAtas, strValSoilBawah, valSoilBawah, statusSoil];
     },
     
      searchRule: function(strTempInp, valTemp, strHumInp, valHum, type, pos){
@@ -422,6 +502,7 @@ var app = {
                 autoPumpOn: app.isAutoPumpOn,
                 ruleFuzzyTemp: app.isRuleFuzzyTemp,
                 ruleFuzzyHum: app.isRuleFuzzyHum,
+                ruleFuzzySoil: app.isRuleFuzzySoil,
                 ruleFuzzyWater: app.isRuleFuzzyWater,
                 targetSoil: app.currentTargetSoil,
                 time: app.currentTime,
