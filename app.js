@@ -20,17 +20,17 @@ var fuzzyValue = 0;
 // fuzzy temperature
 var tempMin = [0, 20, 25, 30, 35];
 var tempMax = [25, 30, 35, 40, 80];
-var strTemp = ["Cold", "Rather Cold", "Normal", "Rather Hot", "Hot"];
+var strTemp = ["Cold", "Cool", "Normal", "Warm", "Hot"];
 
 // fuzzy soil mositure
 var humMin = [0, 25, 60];
 var humMax = [55, 75, 100];
-var strHum = ["Dry", "Moist", "Wet"];
+var strHum = ["Dry", "Humid", "Wet"];
 
 // fuzzy humidity
 var soilMin = [0, 25, 60];
 var soilMax = [55, 75, 100];
-var strSoil = ["Dry", "Moist", "Wet"];
+var strSoil = ["Dry", "Humid", "Wet"];
 
 // fuzzy rule
 var ruleMin = [0, 1, 2.5, 3.75, 5, 7, 8];
@@ -47,7 +47,7 @@ var app = {
     isRuleFuzzyHum: "__",
     isRuleFuzzySoil: "__",
     isRuleFuzzyWater: "__",
-    currentTargetSoil: 50,
+    currentTargetSoil: 40,
     currentTemp:0,
     currentHumid:0,
     currentSoil: 0,
@@ -169,7 +169,7 @@ var app = {
             var strValHum  = hasilHum.strValHum; 
             var valHum     = hasilHum.valHum; 
             var statusHum  = hasilHum.statusHum;
-        } else if (((hum >= humMax[0] && hum <= humMin[2]) || (hum == humMax[0] || hum == humMin[2]))){
+        } else if (((hum >= humMax[0] && hum <= humMin[2]))){
             var hasilHum    = app.searchHum1(1);
             var strValHum  = hasilHum.strValHum; 
             var valHum     = hasilHum.valHum; 
@@ -199,7 +199,7 @@ var app = {
             var strValSoil  = hasilSoil.strValSoil; 
             var valSoil     = hasilSoil.valSoil; 
             var statusSoil  = hasilSoil.statusSoil;
-        } else if (((soil >= soilMax[0] && soil <= soilMin[2]) || (soil == soilMax[0] || soil == soilMin[2]))){
+        } else if (((soil >= soilMax[0] && soil <= soilMin[2]))){
             var hasilSoil    = app.searchSoil1(1);
             var strValSoil  = hasilSoil.strValSoil; 
             var valSoil     = hasilSoil.valSoil; 
@@ -573,13 +573,22 @@ var app = {
         if(app.currentSoil < app.currentTargetSoil && app.isAutoPumpOn === "ON"){
             console.log("turning pump relay auto on init");
             app.isAutoPumpOn = "OFF";
-            // app.pumpOn();
             app.checkNotif();
+            // setTimeout(function(){ 
+            //     app.pumpOn();
+            // },app.currentWater + 000)
             //keep running pump until soil moisture meets target
+            var waterTime = 0;
+            waterTime = waterTime + app.currentWater;
             app.autoPumpInterval = setInterval(function(){
+                waterTime--;
+                if(waterTime <= 0){
+                    clearInterval(app.autoPumpInterval);
+                } 
                 console.log("turning pump relay auto on running");
                 app.pumpOn();
-            },5000); 
+                console.log("TIME: " + waterTime)
+            },waterTime + 000);
         }
         //if autoPump is already running, and soil reaches appropriate moisture level, turn off watering
         else if (app.currentSoil >= app.currentTargetSoil && app.isAutoPumpOn === "OFF"){
@@ -598,34 +607,18 @@ var app = {
             console.log("turning pump relay on running");
             app.isPumpOn = "ON";
             gpio.write(37, true);
-            // setTimeout(function(){ 
-                // request({       
-                //     method: 'POST',
-                //     url: urlRelayUpdate,
-                //     data: {
-                //         "pumpOn":"OFF",
-                //         "autoPumpOn":"OFF"
-                //         }
-                //     }, function(err, res, body) {
-                //         if(err){
-                //             return(err);
-                //         }
-                //     app.pumpOff();
-                //     //console.log(body);
-                // });
-            // },10000)
             
-            var af = 0;
-            app.autoPumpSetTimeout = setInterval(function(){
-                if(app.isPumpOn === "ON") {
-                    af = af + 1;
-                    console.log("Timer: " + af);
-                    app.currentSetTimeout = af
-                }else {
-                    app.currentSetTimeout = af
-                    clearInterval(app.autoPumpSetTimeout)
-                }
-            },2000);
+            // var af = 0;
+            // app.autoPumpSetTimeout = setInterval(function(){
+            //     if(app.isPumpOn === "ON") {
+            //         af = af + 1;
+            //         console.log("Timer: " + af);
+            //         app.currentSetTimeout = af
+            //     }else {
+            //         app.currentSetTimeout = af
+            //         clearInterval(app.autoPumpSetTimeout)
+            //     }
+            // },2000);
         }
     },
 
